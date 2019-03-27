@@ -26,14 +26,15 @@ var (
 )
 
 type Line struct {
-	Text string
-	Time time.Time
-	Err  error // Error from tail
+	Text   string
+	Time   time.Time
+	Err    error // Error from tail
+	Offset int64
 }
 
 // NewLine returns a Line with present time.
 func NewLine(text string) *Line {
-	return &Line{text, time.Now(), nil}
+	return &Line{Text: text, Time: time.Now()}
 }
 
 // SeekInfo represents arguments to `os.Seek`
@@ -54,6 +55,12 @@ type logger interface {
 	Println(v ...interface{})
 }
 
+type DateParseFunc func(line string) (time.Time, error)
+
+func DefaultDateParseFunc(line string) (time.Time, error) {
+	return time.Now(), nil
+}
+
 // Config is used to specify how a file must be tailed.
 type Config struct {
 	// File-specifc
@@ -70,7 +77,8 @@ type Config struct {
 
 	// Logger, when nil, is set to tail.DefaultLogger
 	// To disable logging: set field to tail.DiscardingLogger
-	Logger logger
+	Logger    logger
+	DateParse DateParseFunc
 }
 
 type Tail struct {
@@ -101,6 +109,10 @@ var (
 // invoke the `Wait` or `Err` method after finishing reading from the
 // `Lines` channel.
 func TailFile(filename string, config Config) (*Tail, error) {
+	if config.DateParse == nil {
+		config.DateParse = DefaultDateParseFunc
+	}
+
 	if config.ReOpen && !config.Follow {
 		util.Fatal("cannot set ReOpen without Follow.")
 	}
@@ -227,6 +239,10 @@ func (tail *Tail) tailFileSync() {
 	defer tail.Done()
 	defer tail.close()
 
+	if tail.DateParse == nil {
+		tail.DateParse = DefaultDateParseFunc
+	}
+
 	if !tail.MustExist {
 		// deferred first open.
 		err := tail.reopen()
@@ -269,13 +285,18 @@ func (tail *Tail) tailFileSync() {
 
 		// Process `line` even if err is EOF.
 		if err == nil {
-			cooloff := !tail.sendLine(line)
+			cooloff := !tail.sendLine(line, offset)
 			if cooloff {
 				// Wait a second before seeking till the end of
 				// file when rate limit is reached.
 				msg := ("Too much log activity; waiting a second " +
 					"before resuming tailing")
-				tail.Lines <- &Line{msg, time.Now(), errors.New(msg)}
+				t, err := tail.DateParse(msg)
+				if err != nil {
+					tail.Logger.Printf("Error parsing date %s ...", err)
+					t = time.Now()
+				}
+				tail.Lines <- &Line{Text: msg, Time: t, Err: errors.New(msg), Offset: offset}
 				select {
 				case <-time.After(time.Second):
 				case <-tail.Dying():
@@ -289,7 +310,7 @@ func (tail *Tail) tailFileSync() {
 		} else if err == io.EOF {
 			if !tail.Follow {
 				if line != "" {
-					tail.sendLine(line)
+					tail.sendLine(line, offset)
 				}
 				return
 			}
@@ -404,8 +425,7 @@ func (tail *Tail) seekTo(pos SeekInfo) error {
 
 // sendLine sends the line(s) to Lines channel, splitting longer lines
 // if necessary. Return false if rate limit is reached.
-func (tail *Tail) sendLine(line string) bool {
-	now := time.Now()
+func (tail *Tail) sendLine(line string, offset int64) bool {
 	lines := []string{line}
 
 	// Split longer lines
@@ -414,7 +434,12 @@ func (tail *Tail) sendLine(line string) bool {
 	}
 
 	for _, line := range lines {
-		tail.Lines <- &Line{line, now, nil}
+		t, err := tail.DateParse(line)
+		if err != nil {
+			tail.Logger.Printf("Error parsing date %s ...", err)
+			t = time.Now()
+		}
+		tail.Lines <- &Line{Text: line, Time: t, Offset: offset}
 	}
 
 	if tail.Config.RateLimiter != nil {

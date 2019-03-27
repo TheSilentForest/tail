@@ -7,7 +7,6 @@
 package tail
 
 import (
-	_ "fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -433,6 +432,50 @@ func reSeek(t *testing.T, poll bool) {
 	// the reading of data written above. Timings can vary based on
 	// test environment.
 	tailTest.Cleanup(tail, false)
+}
+
+func parseLine(line string) (time.Time, error) {
+	return time.Parse(time.RFC3339, line)
+}
+
+func TestDateParse(t *testing.T) {
+	tailTest := NewTailTest("date-parse", t)
+	tailTest.CreateFile("test.txt", "2009-11-10T23:00:00Z\n2009-11-10T23:00:01Z\n")
+	tail := tailTest.StartTail("test.txt", Config{Follow: true, Location: nil, DateParse: parseLine})
+	line := <-tail.Lines
+	if line.Text != "2009-11-10T23:00:00Z" {
+		t.Errorf("%s != %s", line.Text, "2009-11-10T23:00:00Z")
+	}
+	if line.Time.Unix() != 1257894000 {
+		t.Errorf("%d != %d", line.Time.Unix(), 1257894000)
+	}
+	line = <-tail.Lines
+	if line.Text != "2009-11-10T23:00:01Z" {
+		t.Errorf("%s != %s", line.Text, "2009-11-10T23:00:00Z")
+	}
+	if line.Time.Unix() != 1257894001 {
+		t.Errorf("%d != %d", line.Time.Unix(), 1257894001)
+	}
+	tail.Stop()
+	tail.Cleanup()
+	tailTest.RemoveFile("test.txt")
+}
+
+func TestOffset(t *testing.T) {
+	tailTest := NewTailTest("date-parse", t)
+	tailTest.CreateFile("test.txt", "hello\nworld\n")
+	tail := tailTest.StartTail("test.txt", Config{Follow: true, Location: nil})
+	line := <-tail.Lines
+	if line.Offset != 0 {
+		t.Errorf("%d != %d", line.Offset, 0)
+	}
+	line = <-tail.Lines
+	if line.Offset != 6 {
+		t.Errorf("%d != %d", line.Offset, 6)
+	}
+	tail.Stop()
+	tail.Cleanup()
+	tailTest.RemoveFile("test.txt")
 }
 
 // Test library
