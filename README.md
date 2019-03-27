@@ -1,5 +1,5 @@
-[![Build Status](https://travis-ci.org/hpcloud/tail.svg)](https://travis-ci.org/hpcloud/tail)
-[![Build status](https://ci.appveyor.com/api/projects/status/vrl3paf9md0a7bgk/branch/master?svg=true)](https://ci.appveyor.com/project/Nino-K/tail/branch/master)
+# NOTE
+This is a fork of [tail](https://github.com/hpcloud/tail).
 
 # Go package for tail-ing files
 
@@ -12,7 +12,7 @@ for line := range t.Lines {
 }
 ```
 
-See [API documentation](http://godoc.org/github.com/hpcloud/tail).
+See [API documentation](http://godoc.org/github.com/TheSilentForest/tail).
 
 ## Log rotation
 
@@ -21,8 +21,8 @@ designed to work with log rotation tools.
 
 ## Installing
 
-    go get github.com/hpcloud/tail/...
+    go get github.com/TheSilentForest/tail/...
 
 ## Windows support
 
-This package [needs assistance](https://github.com/hpcloud/tail/labels/Windows) for full Windows support.
+This package [needs assistance](https://github.com/TheSilentForest/tail/labels/Windows) for full Windows support.
